@@ -3,7 +3,8 @@ import csv,io
 from app.errors import DomainError
 from app.reader import decode
 from app.pipeline import calculate
-from app.store import save, latest, history, review, get_run
+from app.store import (save, latest, history, review, get_run, save_revision,
+                       find_chain_by_key, chain_detail, activate)
 from app.web import bp as web
 
 from app.modules.m1_receiving.handler import bp as bp1
@@ -36,7 +37,7 @@ app.register_blueprint(bp7)
 def validate_request_object():
     if request.method!='POST': return None
     if request.files:
-        if request.path!='/api/run' or 'file' not in request.files:
+        if request.path not in ('/api/run','/api/revision') or 'file' not in request.files:
             raise DomainError('REQUEST','上传必须使用file字段',400)
         return None
     if not request.is_json:
@@ -66,6 +67,47 @@ def decide():
     try: version=int(body.get('revision',0))
     except (ValueError,TypeError): raise DomainError('VERSION','版本必须为整数')
     return jsonify(review(body.get('id'),version,body.get('decision')))
+def _csv_from_request(payload):
+    if request.files:
+        return decode(request.files['file'].read())
+    return payload.get('csv')
+@app.route('/api/revision',methods=['POST'])
+def revision():
+    """同批号补录：生成关联替代版本并切换当前执行方案。
+
+    JSON 字段：csv（可省略走样例）、parent_id（可省略则按业务键自动寻链）、
+    idempotency_key（重试键，同键重复提交不重复占库）。
+    """
+    payload=request.get_json(silent=True) or {}
+    text=_csv_from_request(payload)
+    parent_id=payload.get('parent_id')
+    idem=payload.get('idempotency_key')
+    if idem is not None and not isinstance(idem,str):
+        raise DomainError('REQUEST','幂等键必须为字符串',400)
+    parent_run=None
+    # 先用轻量计算拿到链指纹，再自动找链；同文重试直接复用既有批次。
+    probe=calculate(text, stop=2)
+    chain_key=probe['manifest'].get('chain_key')
+    if parent_id:
+        # 显式父方案即承接意图：实体集合允许增减（需求消失走 released_holds）。
+        parent_run=get_run(str(parent_id))
+    else:
+        # 自动寻链仅在实体键指纹完全一致时成立，避免误挂到其他链。
+        chain=find_chain_by_key(chain_key)
+        if chain is not None:
+            parent_run=get_run(chain['current_id'])
+    if parent_run is None:
+        raise DomainError('CHAIN','未找到同批号修订链，请先复核原方案或提供parent_id',409)
+    result=calculate(text, parent_run=parent_run)
+    if result['manifest'].get('chain_key')!=chain_key:
+        raise DomainError('CHAIN','链指纹计算异常',409)
+    return jsonify(save_revision(result, idem))
+@app.route('/api/chains/<chain_id>')
+def chain(chain_id):
+    return jsonify(chain_detail(chain_id))
+@app.route('/api/runs/<ident>/activate',methods=['POST'])
+def switch_current(ident):
+    return jsonify(activate(ident))
 @app.route('/api/evidence.csv')
 def evidence():
     result=get_run(request.args['run_id']) if request.args.get('run_id') else (latest() or save(calculate()));out=io.StringIO(newline='')

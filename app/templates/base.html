@@ -1,1 +1,150 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{title}}</title><link rel="stylesheet" href="/static/theme.css"><link rel="stylesheet" href="/static/layout.css"><link rel="stylesheet" href="/static/components.css"><script defer src="/static/actions.js"></script></head><body><div class="app"><aside class="rail"><div class="brand">药房配货簿</div><nav>{% for name in modules %}<a class="{{'active' if stage==loop.index}}" href="/work/{{loop.index}}?run_id={{run.manifest.run_id}}"><span>{{loop.index}}</span>{{name}}</a>{% endfor %}</nav><small>2026-11-18<br>中央仓 / {{run.net_demands|map(attribute="store")|unique|list|length}} 门店</small></aside><div class="work"><header class="topbar"><strong>{{current.name}}</strong><span class="tag">{{run.manifest.run_id[:8]}}</span><button class="primary" id="demo">运行样例</button><a class="btn" href="/api/evidence.csv?run_id={{run.manifest.run_id}}">证据CSV</a></header><main class="content"><div class="kpis">{% for m in current.metrics %}<div class="kpi"><span>{{m[0]}}</span><b>{{m[1]|display}} <small>{{m[2]}}</small></b></div>{% endfor %}<div class="kpi"><span>版本</span><b>{{run.revision}}</b></div><div class="kpi"><span>隔离</span><b>{{run.quarantine|length}}</b></div></div><div class="letters"><span>A · 来源</span><span>B · 药品</span><span>C · 批号</span><span>D · 数量</span><span>E · 效期</span><span>F · 复核</span></div><div class="panel-grid"><section class="panel main-sheet"><div class="panel__head"><h2>{{current.name}} / 证据</h2><span>{{current.rows|length}} 行</span></div><div class="scroll">{% if current.rows %}<table><thead><tr><th>#</th>{% for key in current.rows[0] %}<th>{{key}}</th>{% endfor %}</tr></thead><tbody>{% for row in current.rows %}<tr><td>{{loop.index}}</td>{% for value in row.values() %}<td tabindex="0" title="{{value}}">{{value|display}}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% else %}<p class="empty">载入库存后分配。</p>{% endif %}</div></section><section class="panel"><div class="panel__head"><h2>批号分布</h2><span>件 / 天</span></div><div class="panel__body">{% block stage_visual %}{% endblock %}</div></section><section class="panel"><div class="panel__head"><h2>方案复核</h2><span class="tag">{{run.decision}}</span></div><div class="panel__body"><div>计划 {{run.manifest.run_id[:8]}}</div><div class="actions"><button data-approve="通过">通过</button><button data-approve="退回">退回</button><button id="paper">打印</button></div></div></section><section class="panel main-sheet"><div class="panel__head"><h2>隔离清单</h2><span>{{run.quarantine|length}} 条</span></div><div class="scroll"><table><thead><tr><th>行号</th><th>单据</th><th>批号</th><th>原因码</th><th>原因</th></tr></thead><tbody>{% for q in run.quarantine %}<tr><td>{{q['行号']}}</td><td>{{q.get('record','—')}}</td><td>{{q.get('lot','—')}}</td><td class="sev--severe">{{q['原因码']}}</td><td>{{q['原因']}}</td></tr>{% endfor %}</tbody></table></div></section><section class="panel main-sheet"><div class="panel__head"><h2>来源文件</h2><span>CSV</span></div><div class="panel__body"><details><summary>调整库存与需求</summary><textarea id="source" aria-label="库存需求CSV">{{sample}}</textarea><div class="actions"><button id="commit">提交文本</button><input type="file" id="attachment" accept=".csv" aria-label="选择库存CSV"><button id="sendfile">上传</button></div></details><div id="message" role="status" class="error"></div></div></section></div></main><footer class="statusbar"><span>{{run.manifest.rule_version}} · UTC</span><span>{{run.manifest.created_at}} · {{run.manifest.sha256[:10]}}</span></footer></div></div><script type="application/json" id="plan">{{{'id':run.manifest.run_id,'revision':run.revision}|tojson}}</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}}</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/layout.css">
+<link rel="stylesheet" href="/static/components.css">
+<script defer src="/static/actions.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">药房配货簿</div>
+    <nav>
+      {% for name in modules %}
+      <a class="{{'active' if stage==loop.index}}" href="/work/{{loop.index}}?run_id={{run.manifest.run_id}}"><span>{{loop.index}}</span>{{name}}</a>
+      {% endfor %}
+    </nav>
+    <small>2026-11-18<br>中央仓 / {{run.net_demands|map(attribute="store")|unique|list|length}} 门店</small>
+  </aside>
+  <div class="work">
+    <header class="topbar">
+      <strong>{{current.name}}</strong>
+      <span class="tag">{{run.manifest.run_id[:8]}}</span>
+      {% if run.revision_info and run.revision_info.revision_no and run.revision_info.revision_no > 1 %}
+      <span class="tag tag--rev">替代版本 v{{run.revision_info.revision_no}} · 承接 {{run.manifest.parent_id[:8] if run.manifest.parent_id else '—'}}</span>
+      {% else %}
+      <span class="tag tag--rev">链首版本 v1</span>
+      {% endif %}
+      <button class="primary" id="demo">运行样例</button>
+      <a class="btn" href="/api/evidence.csv?run_id={{run.manifest.run_id}}">证据CSV</a>
+    </header>
+    <main class="content">
+      <div class="kpis">
+        {% for m in current.metrics %}
+        <div class="kpi"><span>{{m[0]}}</span><b>{{m[1]|display}} <small>{{m[2]}}</small></b></div>
+        {% endfor %}
+        <div class="kpi"><span>复核版本</span><b>{{run.revision}}</b></div>
+        <div class="kpi"><span>修订序号</span><b>{{run.manifest.revision_no|default(1)}}</b></div>
+        <div class="kpi"><span>隔离</span><b>{{run.quarantine|length}}</b></div>
+      </div>
+      <div class="letters"><span>A · 来源</span><span>B · 药品</span><span>C · 批号</span><span>D · 数量</span><span>E · 效期</span><span>F · 复核</span></div>
+      <div class="panel-grid">
+        <section class="panel main-sheet">
+          <div class="panel__head"><h2>{{current.name}} / 证据</h2><span>{{current.rows|length}} 行</span></div>
+          <div class="scroll">
+            {% if current.rows %}
+            <table>
+              <thead><tr><th>#</th>{% for key in current.rows[0] %}<th>{{key}}</th>{% endfor %}</tr></thead>
+              <tbody>
+              {% for row in current.rows %}
+                <tr><td>{{loop.index}}</td>{% for value in row.values() %}<td tabindex="0" title="{{value}}">{{value|display}}</td>{% endfor %}</tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            {% else %}<p class="empty">载入库存后分配。</p>{% endif %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__head"><h2>批号分布</h2><span>件 / 天</span></div>
+          <div class="panel__body">{% block stage_visual %}{% endblock %}</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__head"><h2>方案复核</h2><span class="tag">{{run.decision}}</span></div>
+          <div class="panel__body">
+            <div>计划 {{run.manifest.run_id[:8]}} · 修订序号 v{{run.manifest.revision_no|default(1)}}</div>
+            <div class="actions">
+              <button data-approve="通过">通过</button>
+              <button data-approve="退回">退回</button>
+              <button id="paper">打印</button>
+            </div>
+          </div>
+        </section>
+
+        {% block revision_panel %}
+        <section class="panel main-sheet">
+          <div class="panel__head"><h2>修订替代版本</h2><span class="tag">{{run.manifest.chain_id[:8] if run.manifest.chain_id else '未入链'}}</span></div>
+          <div class="panel__body">
+            {% set info = run.revision_info or {} %}
+            <table class="kv">
+              <tr><th>修订链</th><td>{{info.chain_id or run.manifest.run_id}}</td></tr>
+              <tr><th>当前序号</th><td>v{{info.revision_no|default(1)}}（{{run.decision}}）</td></tr>
+              <tr><th>父方案</th><td>{{info.parent_id or '—'}}{% if info.parent_decision %} · 原复核：{{info.parent_decision}}{% endif %}</td></tr>
+              <tr><th>承接未发占用</th><td>{{(info.holds or {}).values()|sum if info.holds else 0}} 件</td></tr>
+            </table>
+            {% if info.lost_holds %}
+            <div class="warn">批号最新库存不足承接原占用：
+              {% for h in info.lost_holds %}{{h.药品}}/{{h.批号}} 缺{{h.承接缺口}}件{% if not loop.last %}；{% endif %}{% endfor %}
+            </div>
+            {% endif %}
+            {% if info.released_holds %}
+            <div class="muted">已消失需求释放占用：{{info.released_holds|map(attribute='需求单')|join('、')}}</div>
+            {% endif %}
+            <details>
+              <summary>同批号补录新修订（自动寻链或指定父方案）</summary>
+              <textarea id="revision-source" aria-label="修订后库存需求CSV">{{sample}}</textarea>
+              <div class="actions">
+                <label class="inline">幂等键 <input id="idem-key" type="text" placeholder="重试不重复占库"></label>
+                <button id="revision-commit">生成替代版本并切换</button>
+              </div>
+            </details>
+            <div id="revision-message" role="status" class="error"></div>
+          </div>
+        </section>
+        {% endblock %}
+
+        <section class="panel main-sheet">
+          <div class="panel__head"><h2>隔离清单</h2><span>{{run.quarantine|length}} 条</span></div>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>行号</th><th>单据</th><th>批号</th><th>原因码</th><th>原因</th></tr></thead>
+              <tbody>
+              {% for q in run.quarantine %}
+                <tr><td>{{q['行号']}}</td><td>{{q.get('record','—')}}</td><td>{{q.get('lot','—')}}</td><td class="sev--severe">{{q['原因码']}}</td><td>{{q['原因']}}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel main-sheet">
+          <div class="panel__head"><h2>来源文件</h2><span>CSV</span></div>
+          <div class="panel__body">
+            <details>
+              <summary>调整库存与需求</summary>
+              <textarea id="source" aria-label="库存需求CSV">{{sample}}</textarea>
+              <div class="actions">
+                <button id="commit">提交文本</button>
+                <input type="file" id="attachment" accept=".csv" aria-label="选择库存CSV">
+                <button id="sendfile">上传</button>
+              </div>
+            </details>
+            <div id="message" role="status" class="error"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="statusbar">
+      <span>{{run.manifest.rule_version}} · UTC</span>
+      <span>{{run.manifest.created_at}} · {{run.manifest.sha256[:10]}}</span>
+    </footer>
+  </div>
+</div>
+<script type="application/json" id="plan">{{{'id':run.manifest.run_id,'revision':run.revision,'chain_id':run.manifest.get('chain_id'),'revision_no':run.manifest.get('revision_no',1)}|tojson}}</script>
+</body>
+</html>

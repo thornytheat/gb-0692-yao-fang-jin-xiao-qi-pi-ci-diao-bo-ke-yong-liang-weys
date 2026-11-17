@@ -1,2 +1,53 @@
 {% extends 'base.html' %}
 {% block stage_visual %}{% for r in current.rows[:6] %}<div class="stock-bar"><span>{{r["门店"]}}</span><b>{{r["复核"]}}</b></div>{% endfor %}{% endblock %}
+{% block revision_panel %}
+<section class="panel main-sheet">
+  <div class="panel__head"><h2>修订替代版本</h2><span class="tag">{{run.manifest.chain_id[:8] if run.manifest.chain_id else '未入链'}}</span></div>
+  <div class="panel__body">
+    {% set info = run.revision_info or {} %}
+    <table class="kv">
+      <tr><th>修订链</th><td>{{info.chain_id or run.manifest.run_id}}</td></tr>
+      <tr><th>当前序号</th><td>v{{info.revision_no|default(1)}}（{{run.decision}}）</td></tr>
+      <tr><th>父方案</th><td>{{info.parent_id or '—'}}{% if info.parent_decision %} · 原复核：{{info.parent_decision}}{% endif %}</td></tr>
+      <tr><th>承接未发占用合计</th><td>{{(info.holds or {}).values()|sum if info.holds else 0}} 件</td></tr>
+    </table>
+    <details>
+      <summary>同批号补录新修订（自动寻链或指定父方案）</summary>
+      <textarea id="revision-source" aria-label="修订后库存需求CSV">{{sample}}</textarea>
+      <div class="actions">
+        <label class="inline">幂等键 <input id="idem-key" type="text" placeholder="重试不重复占库"></label>
+        <button id="revision-commit">生成替代版本并切换</button>
+      </div>
+    </details>
+    <div id="revision-message" role="status" class="error"></div>
+  </div>
+</section>
+<section class="panel main-sheet">
+  <div class="panel__head"><h2>原量 / 新量 / 未发占用 / 可用差额（按需求单）</h2><span>{{current.rows|length}} 单</span></div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>需求单</th><th>门店</th><th>原方案量</th><th>新方案净需求</th><th>未发占用承接</th><th>本版已分配</th><th>可用差额</th><th>复核</th></tr></thead>
+      <tbody>
+      {% for r in current.rows %}
+        <tr><td>{{r['需求单']}}</td><td>{{r['门店']}}</td><td>{{r['原方案量']}}</td><td>{{r['新方案净需求']}}</td><td>{{r['未发占用承接']}}</td><td>{{r['本版已分配']}}</td><td>{{r['可用差额']}}</td><td>{{r['复核']}}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="panel main-sheet">
+  <div class="panel__head"><h2>批号占库与可用差额</h2><span>{{run.lot_revision_view|length if run.lot_revision_view else 0}} 批</span></div>
+  <div class="scroll">
+    {% if run.lot_revision_view %}
+    <table>
+      <thead><tr><th>药品</th><th>批号</th><th>最新可调拨(新量)</th><th>未发占用(原量承接)</th><th>本版可分配(可用差额)</th></tr></thead>
+      <tbody>
+      {% for l in run.lot_revision_view %}
+        <tr><td>{{l['药品']}}</td><td>{{l['批号']}}</td><td>{{l['最新可调拨']}}</td><td>{{l['未发占用']}}</td><td>{{l['本版可分配']}}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">链首版本无承接占用。</p>{% endif %}
+  </div>
+</section>
+{% endblock %}
