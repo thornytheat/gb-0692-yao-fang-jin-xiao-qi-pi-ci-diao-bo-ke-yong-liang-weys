@@ -1,0 +1,2 @@
+{% extends 'base.html' %}
+{% block stage_visual %}{% for d in run.net_demands[:6] %}<div class="stock-bar"><span>{{d.store}}</span><i style="width:{{d.net_need*2}}px"></i><b>{{d.net_need}}</b></div>{% endfor %}{% endblock %}

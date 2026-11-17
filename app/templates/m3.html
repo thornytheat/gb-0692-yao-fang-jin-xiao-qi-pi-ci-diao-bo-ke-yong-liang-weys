@@ -1,0 +1,2 @@
+{% extends 'base.html' %}
+{% block stage_visual %}{% for s in run.usable[:6] %}<div class="stock-bar"><span>{{s.lot}}</span><i style="width:{{s["余期_天"]*3}}px"></i><b>{{s["余期_天"]}} 天</b></div>{% endfor %}{% endblock %}

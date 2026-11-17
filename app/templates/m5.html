@@ -1,0 +1,2 @@
+{% extends 'base.html' %}
+{% block stage_visual %}{% for d in run.shortages[:6] %}<div class="stock-bar"><span>{{d["门店"]}}</span><i style="width:{{d["已分配"]*2}}px"></i><b>{{d["缺口"]}} 缺口</b></div>{% endfor %}{% endblock %}

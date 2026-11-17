@@ -1,0 +1,2 @@
+{% extends 'base.html' %}
+{% block stage_visual %}{% for r in current.rows %}<div class="stock-bar"><span>{{r["项目"]}}</span><b>{{r["差额"]}} 件</b></div>{% endfor %}{% endblock %}
